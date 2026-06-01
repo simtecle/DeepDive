@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
   // IMPORTANT: keep this job small to avoid Vercel execution timeouts.
   const controller = new AbortController();
   // Keep below typical serverless timeouts. If we time out, return a safe "skipped" response.
-  const timeoutMs = 20_000;
+  const timeoutMs = 120_000;
   const t = setTimeout(() => controller.abort(), timeoutMs);
 
   const adminToken = process.env.ADMIN_TOKEN ?? '';
