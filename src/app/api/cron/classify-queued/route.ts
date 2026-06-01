@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
   const safeLimit = Number.isFinite(limit) ? Math.min(200, Math.max(1, Math.floor(limit))) : 40;
 
   const controller = new AbortController();
-  const timeoutMs = 25_000;
+  const timeoutMs = 120_000;
   const t = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
