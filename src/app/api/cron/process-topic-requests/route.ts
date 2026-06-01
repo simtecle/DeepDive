@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
         // Import-first. Keep classify limited (or move classify to its own cron).
         mode: 'import_only',
         // Keep small to reduce timeout risk.
-        maxTopics: Number(process.env.CRON_MAX_TOPICS ?? '4'),
+        maxTopics: Number(process.env.CRON_MAX_TOPICS ?? '3'),
         lookback: Number(process.env.CRON_LOOKBACK_DAYS ?? '30'),
         maxPerQuery: Number(process.env.CRON_MAX_PER_QUERY ?? '15'),
         language: process.env.CRON_LANGUAGE ?? 'en',

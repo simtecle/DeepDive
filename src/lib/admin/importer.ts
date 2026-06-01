@@ -23,6 +23,51 @@ type YtVideosItem = {
 };
 type YtVideosResp = { items?: YtVideosItem[] };
 
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function fetchWithTimeout(url: string, opts: { timeoutMs: number; retry?: number }): Promise<Response> {
+  const retry = Math.max(0, Math.min(2, Math.floor(opts.retry ?? 0)));
+
+  for (let attempt = 0; attempt <= retry; attempt++) {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), opts.timeoutMs);
+
+    try {
+      const res = await fetch(url, { signal: controller.signal });
+
+      // Retry on transient server errors.
+      if (!res.ok && res.status >= 500 && res.status < 600 && attempt < retry) {
+        await sleep(300 * (attempt + 1));
+        continue;
+      }
+
+      return res;
+    } catch (e: any) {
+      const isAbort = e?.name === 'AbortError' || String(e?.message ?? '').toLowerCase().includes('aborted');
+      const isTransient = isAbort || String(e?.message ?? '').toLowerCase().includes('timeout');
+      if (attempt < retry && isTransient) {
+        await sleep(300 * (attempt + 1));
+        continue;
+      }
+      throw e;
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
+  // unreachable
+  throw new Error('fetch_failed');
+}
+
+function youtubeTimeoutMs() {
+  // Keep per-request time bounded so cron jobs don't hang.
+  // Env override lets you tune without redeploy.
+  const v = Number(process.env.YOUTUBE_FETCH_TIMEOUT_MS ?? '17000');
+  return Number.isFinite(v) ? Math.min(60000, Math.max(3000, Math.floor(v))) : 12000;
+}
+
 function parseIsoDurationToMinutes(iso: string): number | null {
   // PT#H#M#S
   const m = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(iso);
@@ -58,8 +103,8 @@ export async function importFromYouTube(params: ImportParams): Promise<{
   searchUrl.searchParams.set('key', key);
   if (params.language) searchUrl.searchParams.set('relevanceLanguage', params.language);
 
-  const sRes = await fetch(searchUrl.toString());
-  if (!sRes.ok) throw new Error(`youtube_search_error:${await sRes.text()}`);
+  const sRes = await fetchWithTimeout(searchUrl.toString(), { timeoutMs: youtubeTimeoutMs(), retry: 1 });
+  if (!sRes.ok) throw new Error(`youtube_search_error:${sRes.status}:${await sRes.text()}`);
   const sJson = (await sRes.json()) as YtSearchResp;
 
   const ids = (sJson.items ?? [])
@@ -74,8 +119,8 @@ export async function importFromYouTube(params: ImportParams): Promise<{
   vidsUrl.searchParams.set('id', ids.join(','));
   vidsUrl.searchParams.set('key', key);
 
-  const vRes = await fetch(vidsUrl.toString());
-  if (!vRes.ok) throw new Error(`youtube_videos_error:${await vRes.text()}`);
+  const vRes = await fetchWithTimeout(vidsUrl.toString(), { timeoutMs: youtubeTimeoutMs(), retry: 1 });
+  if (!vRes.ok) throw new Error(`youtube_videos_error:${vRes.status}:${await vRes.text()}`);
   const vJson = (await vRes.json()) as YtVideosResp;
 
   const rows = (vJson.items ?? []).map((v) => {
