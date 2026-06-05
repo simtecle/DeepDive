@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { supabaseServer } from '@/lib/supabaseServer';
 
 export async function GET(req: NextRequest) {
   const auth = req.headers.get('authorization') ?? '';
@@ -18,6 +19,40 @@ export async function GET(req: NextRequest) {
 
   if (!bearerOk && !scheduledOk) {
     return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 });
+  }
+
+  // DB-backed cooldown lock to prevent overlapping / repeated runs.
+  // TTL default: 1 hour.
+  const lockKey = 'cron:process-topic-requests';
+  const ttlSecondsRaw = Number(process.env.CRON_LOCK_TTL_SECONDS ?? '3600');
+  const ttlSeconds = Number.isFinite(ttlSecondsRaw) ? Math.max(60, Math.floor(ttlSecondsRaw)) : 3600;
+
+  // Try to acquire lock using whichever RPC exists. Fail-open if RPC is missing/misconfigured.
+  let acquired = true;
+  try {
+    // Preferred older API (if you created acquire_cron_lock(job_name,...))
+    const { data, error } = await supabaseServer.rpc('acquire_cron_lock', {
+      p_job_name: lockKey,
+      p_ttl_seconds: ttlSeconds,
+      p_locked_by: req.headers.get('x-vercel-id') ?? req.headers.get('user-agent') ?? null,
+    });
+    if (!error) acquired = Boolean(data);
+    else {
+      // Fallback newer API (if you created try_acquire_cron_lock(key,...))
+      const fb = await supabaseServer.rpc('try_acquire_cron_lock', {
+        p_key: lockKey,
+        p_ttl_seconds: ttlSeconds,
+      });
+      if (!fb.error) acquired = Boolean(fb.data);
+      // If both RPCs fail, we keep acquired=true (fail-open).
+    }
+  } catch {
+    // fail-open
+    acquired = true;
+  }
+
+  if (!acquired) {
+    return NextResponse.json({ ok: true, skipped: true, reason: 'lock_active', lockKey, ttlSeconds }, { status: 200 });
   }
 
   const origin = req.nextUrl.origin;
