@@ -1,24 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(req: NextRequest) {
-  const auth = req.headers.get('authorization');
-  const expected = process.env.CRON_SECRET;
+  const auth = req.headers.get('authorization') ?? '';
+  const expected = (process.env.CRON_SECRET ?? '').trim();
 
   // Auth options:
   //  1) Manual/curl: Authorization: Bearer <CRON_SECRET>
-  //  2) Vercel Cron: request contains Vercel cron + platform headers.
-  // Notes:
-  //  - Vercel's cron header value can vary; treat presence as the signal.
-  //  - Additional Vercel-specific headers reduce accidental exposure.
-  const isAuthed = Boolean(expected) && auth === `Bearer ${expected}`;
+  //  2) Scheduled Vercel Cron: request includes Vercel cron marker header.
+  //     Vercel does not send our custom Authorization header for scheduled runs.
+  const bearerOk = Boolean(expected) && auth === `Bearer ${expected}`;
 
   const ua = (req.headers.get('user-agent') ?? '').toLowerCase();
-  const hasCronHeader = req.headers.has('x-vercel-cron');
-  const hasVercelId = req.headers.has('x-vercel-id');
-  const hasMatchedPath = req.headers.has('x-matched-path');
-  const isVercelCron = hasCronHeader && (ua.includes('vercel-cron') || ua.includes('vercel')) && hasVercelId && hasMatchedPath;
+  const vercelCronHeaderPresent = req.headers.has('x-vercel-cron');
+  const uaLooksLikeVercelCron = ua.includes('vercel-cron/');
 
-  if (!isAuthed && !isVercelCron) {
+  const scheduledOk = vercelCronHeaderPresent || uaLooksLikeVercelCron;
+
+  if (!bearerOk && !scheduledOk) {
     return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 });
   }
 
