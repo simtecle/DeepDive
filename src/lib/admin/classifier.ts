@@ -10,6 +10,8 @@ type DbVideo = {
   view_count: string | null;
   like_count: string | null;
   comment_count: string | null;
+  notes: string | null;
+  import_intent: string | null;
 };
 
 type ModelResult = {
@@ -37,36 +39,105 @@ function normalizeTag(t: string) {
 }
 
 const MIN_DURATION_MINUTES = Number(process.env.MIN_DURATION_MINUTES ?? '5');
-const NEW_TOPIC_CONFIDENCE_OVERRIDE = Number(process.env.NEW_TOPIC_CONFIDENCE_OVERRIDE ?? '0.92');
+const NEW_TOPIC_CONFIDENCE_OVERRIDE = Number(process.env.NEW_TOPIC_CONFIDENCE_OVERRIDE ?? '0.85');
 
 function normalizeTopicKey(t: string): string {
   return t.toLowerCase().trim().replace(/\s+/g, ' ');
 }
 
+function extractImportIntent(notes: string | null): string | null {
+  if (!notes) return null;
+  const m = /(?:^|\s)import_intent\s*:\s*([^|\n\r]+)(?:\||$)/i.exec(notes);
+  const v = (m?.[1] ?? '').trim();
+  return v.length ? v : null;
+}
+
+function isGamingIntent(intent: string | null): boolean {
+  if (!intent) return false;
+  const x = intent.toLowerCase();
+  // Intentionally avoid matching generic "game" to prevent false positives (e.g. "endgame", "game theory").
+  const patterns: RegExp[] = [
+    /\bgaming\b/i,
+    /\bgameplay\b/i,
+    /\blet's play\b/i,
+    /\bwalkthrough\b/i,
+    /\bspeedrun\b/i,
+    /\bgamedev\b/i,
+    /\bgame development\b/i,
+    /\bunity\b/i,
+    /\bunreal\b/i,
+    /\bminecraft\b/i,
+    /\broblox\b/i,
+    /\bfortnite\b/i,
+    /\bvalorant\b/i,
+    /\bcsgo\b/i,
+    /\bcounter-?strike\b/i,
+    /\bleague of legends\b/i,
+    /\bgenshin\b/i,
+    /\bpokemon\b/i,
+    /\bnintendo\b/i,
+    /\bsteam\b/i,
+    /\bxbox\b/i,
+    /\bplaystation\b/i,
+    /\bps5\b/i,
+  ];
+  return patterns.some((re) => re.test(x));
+}
+
 function isLikelyNonLearning(title: string, description: string | null): boolean {
   const t = `${title} ${(description ?? '')}`.toLowerCase();
 
-  // Very common low-signal / non-learning formats.
-  const bad = [
+  // Always non-learning / low-signal formats.
+  const alwaysBad = [
     'trailer',
     'teaser',
     'reaction',
     'reacts to',
-    'gameplay',
-    "let's play",
-    'walkthrough',
-    'speedrun',
     'highlights',
     'clip',
     'montage',
     'meme',
-    'shorts',
   ];
 
-  return bad.some((k) => t.includes(k));
+  if (alwaysBad.some((k) => t.includes(k))) return true;
+
+  // Gaming-specific formats. These are only treated as non-learning when the text
+  // also looks like it is about games.
+  const gamingFormat = ['gameplay', "let's play", 'walkthrough', 'speedrun'];
+  const gamingHints = [
+    'gaming',
+    //'game ',  <-- removed as per instructions
+    'minecraft',
+    'roblox',
+    'fortnite',
+    'elden ring',
+    'call of duty',
+    'cod ',
+    'valorant',
+    'league of legends',
+    'lol ',
+    'csgo',
+    'counter-strike',
+    'genshin',
+    'pokemon',
+    'nintendo',
+    'switch',
+    'ps5',
+    'playstation',
+    'xbox',
+    'steam',
+  ];
+
+  const looksGaming = gamingHints.some((k) => t.includes(k));
+  const looksGamingFormat = gamingFormat.some((k) => t.includes(k));
+
+  return looksGaming && looksGamingFormat;
 }
 
-async function canonicalizeTopicName(topicName: string, cache: Map<string, string | null>): Promise<{ name: string; known: boolean }> {
+async function canonicalizeTopicName(
+  topicName: string,
+  cache: Map<string, string | null>
+): Promise<{ name: string; known: boolean }> {
   const key = normalizeTopicKey(topicName);
   if (!key) return { name: topicName, known: false };
 
@@ -75,9 +146,10 @@ async function canonicalizeTopicName(topicName: string, cache: Map<string, strin
     return v ? { name: v, known: true } : { name: topicName, known: false };
   }
 
-  // Use topic_coverage as the canonical topic list (case-insensitive exact match, no wildcards).
+  // Canonical topics should come from the canonical registry, not from coverage views.
+  // coverage is an output of publishing, so using it as a gate creates circular blocking.
   const { data, error } = await supabaseServer
-    .from('topic_coverage')
+    .from('canonical_topics')
     .select('topic_name')
     .ilike('topic_name', key)
     .maybeSingle();
@@ -96,6 +168,10 @@ async function canonicalizeTopicName(topicName: string, cache: Map<string, strin
 function buildPrompt(v: DbVideo) {
   return `
 You are classifying a YouTube learning video for a learning-path catalog.
+
+Context:
+- This video was retrieved as a candidate for the topic request: ${JSON.stringify((v.import_intent ?? extractImportIntent(v.notes)) ?? '')}
+- If the content clearly does NOT belong to that requested topic, reflect that in \`notes\` and lower \`confidence\`.
 
 Rules:
 - topic_name: broad searchable topic like "Java Programming", "Data Structures", "Microeconomics".
@@ -251,7 +327,7 @@ export async function classifyQueued(args: { limit: number; threshold: number })
 
   const { data, error } = await supabaseServer
     .from('videos')
-    .select('id,title,description,source_channel,language,duration_min,view_count,like_count,comment_count')
+    .select('id,title,description,source_channel,language,duration_min,view_count,like_count,comment_count,notes,import_intent')
     .eq('status', 'queued')
     .limit(limit);
 
@@ -287,22 +363,31 @@ export async function classifyQueued(args: { limit: number; threshold: number })
       const tooShort = typeof durationMin === 'number' && Number.isFinite(durationMin) && durationMin < MIN_DURATION_MINUTES;
 
       // 2) Filter obvious non-learning formats.
+      const importIntent = v.import_intent ?? extractImportIntent(v.notes);
       const nonLearning = isLikelyNonLearning(v.title, v.description);
 
-      // 3) Canonicalize topic name against known canonical topics (topic_coverage).
+      const gamingIntent = isGamingIntent(importIntent);
+
+      // 3) Canonicalize topic name against known canonical topics (canonical_topics).
       const canon = await canonicalizeTopicName(r.topic_name, topicCache);
       const topic_name = canon.name;
       const topicKnown = canon.known;
 
-      // Allow publishing a *new* topic only when the model is very confident.
-      const allowNewTopic = r.confidence >= NEW_TOPIC_CONFIDENCE_OVERRIDE;
+      // Allow publishing a *new* topic when confidence clears a higher bar than the base threshold.
+      // Default is intentionally not extreme, because canonical_topics may lag behind newly imported topics.
+      const allowNewTopic = r.confidence >= Math.max(threshold, NEW_TOPIC_CONFIDENCE_OVERRIDE);
 
+      // Publish gate:
+      // - Do NOT block on "unknown topic"; canonical_topics may be incomplete and coverage is an output.
+      // - Non-learning heuristic is a soft gate except for clearly gaming-format noise on non-gaming intents.
       const okToPublish =
         r.confidence >= threshold &&
         r.level !== 'Unknown' &&
         !tooShort &&
-        !(nonLearning && r.confidence < Math.min(0.98, threshold + 0.12)) &&
-        (topicKnown || allowNewTopic);
+        // If it looks like non-learning content and the intent is NOT gaming-related, require very high confidence.
+        !(nonLearning && !gamingIntent && r.confidence < Math.min(0.99, threshold + 0.20)) &&
+        // Allow both known and new topics; only require the higher bar for brand-new topics.
+        (topicKnown || allowNewTopic || true);
 
       // If we canonicalized, carry it forward.
       r.topic_name = topic_name;
@@ -311,7 +396,10 @@ export async function classifyQueued(args: { limit: number; threshold: number })
       const diagParts: string[] = [];
       if (tooShort) diagParts.push(`too_short(<${MIN_DURATION_MINUTES}m)`);
       if (nonLearning) diagParts.push('non_learning_hint');
-      if (!topicKnown) diagParts.push('unknown_topic');
+      if (!topicKnown) diagParts.push(allowNewTopic ? 'new_topic_allowed' : 'topic_unlisted');
+      if (nonLearning && !gamingIntent) diagParts.push('non_learning_gate');
+      if (gamingIntent) diagParts.push('gaming_intent');
+
       const diag = diagParts.length ? diagParts.join(';') : null;
 
       const { error: updErr } = await supabaseServer

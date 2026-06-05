@@ -4,6 +4,9 @@ type ImportParams = {
   query: string;
   maxResults: number;
   language?: string; // 'en' etc.
+  importIntent?: string;
+  videoDuration?: 'any' | 'short' | 'medium' | 'long';
+  minDurationMin?: number;
 };
 
 type YtSearchItem = { id?: { videoId?: string } };
@@ -102,6 +105,9 @@ export async function importFromYouTube(params: ImportParams): Promise<{
   searchUrl.searchParams.set('maxResults', String(maxResults));
   searchUrl.searchParams.set('key', key);
   if (params.language) searchUrl.searchParams.set('relevanceLanguage', params.language);
+  if (params.videoDuration && params.videoDuration !== 'any') {
+    searchUrl.searchParams.set('videoDuration', params.videoDuration);
+  }
 
   const sRes = await fetchWithTimeout(searchUrl.toString(), { timeoutMs: youtubeTimeoutMs(), retry: 1 });
   if (!sRes.ok) throw new Error(`youtube_search_error:${sRes.status}:${await sRes.text()}`);
@@ -123,37 +129,49 @@ export async function importFromYouTube(params: ImportParams): Promise<{
   if (!vRes.ok) throw new Error(`youtube_videos_error:${vRes.status}:${await vRes.text()}`);
   const vJson = (await vRes.json()) as YtVideosResp;
 
-  const rows = (vJson.items ?? []).map((v) => {
-    const yt_video_id = v.id ?? null;
-    const title = v.snippet?.title ?? '';
-    const description = v.snippet?.description ?? null;
-    const source_channel = v.snippet?.channelTitle ?? null;
-    const published_at = v.snippet?.publishedAt ?? null;
-    const language = v.snippet?.defaultAudioLanguage ?? params.language ?? 'en';
-    const duration_min = parseIsoDurationToMinutes(v.contentDetails?.duration ?? '') ?? null;
+  const minDuration = Number.isFinite(params.minDurationMin)
+    ? Math.max(0, Math.floor(params.minDurationMin as number))
+    : 5;
 
-    const view_count = numericStringOrNull(v.statistics?.viewCount);
-    const like_count = numericStringOrNull(v.statistics?.likeCount);
-    const comment_count = numericStringOrNull(v.statistics?.commentCount);
+  const rows = (vJson.items ?? [])
+    .map((v) => {
+      const yt_video_id = v.id ?? null;
+      const title = v.snippet?.title ?? '';
+      const description = v.snippet?.description ?? null;
+      const source_channel = v.snippet?.channelTitle ?? null;
+      const published_at = v.snippet?.publishedAt ?? null;
+      const language = v.snippet?.defaultAudioLanguage ?? params.language ?? 'en';
+      const duration_min = parseIsoDurationToMinutes(v.contentDetails?.duration ?? '') ?? null;
 
-    const video_url = yt_video_id ? `https://www.youtube.com/watch?v=${yt_video_id}` : '';
+      // Drop videos that are clearly too short. If duration is missing, treat as unknown and skip.
+      if (duration_min === null) return null;
+      if (minDuration > 0 && duration_min < minDuration) return null;
 
-    return {
-      yt_video_id,
-      title,
-      description,
-      source_channel,
-      video_url,
-      language,
-      duration_min,
-      view_count,
-      like_count,
-      comment_count,
-      status: 'queued',
-      is_active: false,
-      published_at,
-    };
-  });
+      const view_count = numericStringOrNull(v.statistics?.viewCount);
+      const like_count = numericStringOrNull(v.statistics?.likeCount);
+      const comment_count = numericStringOrNull(v.statistics?.commentCount);
+
+      const video_url = yt_video_id ? `https://www.youtube.com/watch?v=${yt_video_id}` : '';
+
+      return {
+        yt_video_id,
+        title,
+        description,
+        source_channel,
+        video_url,
+        language,
+        duration_min,
+        view_count,
+        like_count,
+        comment_count,
+        status: 'queued',
+        is_active: false,
+        published_at,
+        // Store the request intent for later relevance gating during classification.
+        import_intent: (params.importIntent ?? null) as string | null,
+      };
+    })
+    .filter((x): x is NonNullable<typeof x> => Boolean(x));
 
   // Upsert: allow backfill on duplicates
   const { data, error } = await supabaseServer
