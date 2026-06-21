@@ -1,15 +1,20 @@
+export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 
 function isAuthorized(req: NextRequest) {
-  const expected = process.env.CRON_SECRET ?? '';
-  const auth = req.headers.get('authorization') ?? '';
-  const isVercelCron = req.headers.get('x-vercel-cron') === '1';
+  const expected = (process.env.CRON_SECRET ?? '').trim();
+  if (!expected) return { ok: false as const, error: 'missing_cron_secret', status: 500 };
 
-  // Allow scheduled Vercel cron OR manual bearer auth.
-  if (isVercelCron) return true;
-  if (!expected) return false;
-  return auth === `Bearer ${expected}`;
+  // Official Vercel Cron auth:
+  // When CRON_SECRET is set in Vercel Project Environment Variables, scheduled cron invocations
+  // include `Authorization: Bearer <CRON_SECRET>` automatically.
+  // Manual/curl calls must send the same bearer header.
+  const auth = req.headers.get('authorization') ?? '';
+  const token = auth.startsWith('Bearer ') ? auth.slice('Bearer '.length).trim() : '';
+
+  if (token !== expected) return { ok: false as const, error: 'unauthorized', status: 401 };
+  return { ok: true as const };
 }
 
 async function tryAcquireCronLock(lockKey: string, ttlSeconds: number) {
@@ -28,8 +33,9 @@ async function tryAcquireCronLock(lockKey: string, ttlSeconds: number) {
 }
 
 export async function GET(req: NextRequest) {
-  if (!isAuthorized(req)) {
-    return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 });
+  const authResult = isAuthorized(req);
+  if (!authResult.ok) {
+    return NextResponse.json({ ok: false, error: authResult.error }, { status: authResult.status });
   }
 
   // DB-backed cooldown lock (prevents overlapping/too-frequent runs).

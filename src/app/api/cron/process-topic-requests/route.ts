@@ -1,23 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: NextRequest) {
-  const auth = req.headers.get('authorization') ?? '';
   const expected = (process.env.CRON_SECRET ?? '').trim();
+  if (!expected) {
+    return NextResponse.json({ ok: false, error: 'missing_cron_secret' }, { status: 500 });
+  }
 
-  // Auth options:
-  //  1) Manual/curl: Authorization: Bearer <CRON_SECRET>
-  //  2) Scheduled Vercel Cron: request includes Vercel cron marker header.
-  //     Vercel does not send our custom Authorization header for scheduled runs.
-  const bearerOk = Boolean(expected) && auth === `Bearer ${expected}`;
+  // Official Vercel Cron auth:
+  // When CRON_SECRET is set in Vercel Project Environment Variables, scheduled cron invocations
+  // include `Authorization: Bearer <CRON_SECRET>` automatically.
+  // Manual/curl calls must send the same bearer header.
+  const auth = req.headers.get('authorization') ?? '';
+  const token = auth.startsWith('Bearer ') ? auth.slice('Bearer '.length).trim() : '';
 
-  const ua = (req.headers.get('user-agent') ?? '').toLowerCase();
-  const vercelCronHeaderPresent = req.headers.has('x-vercel-cron');
-  const uaLooksLikeVercelCron = ua.includes('vercel-cron/');
-
-  const scheduledOk = vercelCronHeaderPresent || uaLooksLikeVercelCron;
-
-  if (!bearerOk && !scheduledOk) {
+  if (token !== expected) {
     return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 });
   }
 
