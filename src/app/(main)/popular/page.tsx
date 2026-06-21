@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { ArrowRightIcon, CompassIcon } from '@phosphor-icons/react';
 
 type PopularTopic = {
   topic: string;
@@ -85,46 +86,55 @@ export default function PopularPage() {
   }, []);
 
   return (
-    <main className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold">Popular topics</h1>
-        <p className="text-sm text-neutral-400 mt-1">
+    <main className="space-y-8">
+      <header className="max-w-2xl">
+        <CompassIcon size={30} weight="duotone" className="mb-5 text-[var(--accent)]" aria-hidden="true" />
+        <h1 className="text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">Popular topics</h1>
+        <p className="mt-2 text-sm leading-6 text-[var(--foreground-secondary)] sm:text-base">
           Topics with the most published videos in the library.
         </p>
       </header>
 
-      {loading && <p className="text-sm text-neutral-400">Loading…</p>}
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {loading && (
+        <div className="space-y-2" aria-label="Loading popular topics">
+          {[0, 1, 2, 3, 4].map((item) => <div key={item} className="dd-skeleton h-[72px] rounded-[10px]" />)}
+        </div>
+      )}
+      {error && (
+        <div className="rounded-[10px] border border-[color-mix(in_oklch,var(--error)_45%,var(--border))] bg-[var(--surface)] p-4 text-sm text-[var(--error)]">
+          Could not load popular topics. {error}
+        </div>
+      )}
 
       {!loading && !error && topics.length === 0 && (
-        <p className="text-sm text-neutral-400">No popular topics yet.</p>
+        <div className="rounded-[14px] border border-dashed border-[var(--border)] px-6 py-10 text-center text-sm text-[var(--foreground-secondary)]">
+          No popular topics yet. Check back as the library grows.
+        </div>
       )}
 
       {!loading && !error && topics.length > 0 && (
-        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {topics.map((t) => (
+        <ol className="overflow-hidden rounded-[14px] border border-[var(--border)] bg-[var(--surface)]">
+          {topics.map((t, index) => (
             <li
               key={t.topic}
-              className="rounded-xl border border-neutral-800 bg-neutral-900 p-4"
+              className="border-b border-[var(--border)] last:border-b-0"
             >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="font-medium">{t.topic}</div>
-                  <div className="text-xs text-neutral-400 mt-1">
-                    {t.publishedCount} published
+              <Link
+                className="group flex min-h-[72px] items-center gap-4 px-4 py-3 transition-colors hover:bg-[var(--surface-raised)] sm:px-5"
+                href={`/search?q=${encodeURIComponent(t.topic)}`}
+              >
+                <span className="w-7 shrink-0 text-center text-sm font-semibold text-[var(--accent)]">{index + 1}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-medium">{t.topic}</div>
+                  <div className="mt-0.5 text-xs text-[var(--foreground-secondary)]">
+                    {t.publishedCount} published {t.publishedCount === 1 ? 'video' : 'videos'}
                   </div>
                 </div>
-
-                <Link
-                  className="text-sm underline underline-offset-4 hover:text-neutral-200"
-                  href={`/search?q=${encodeURIComponent(t.topic)}`}
-                >
-                  Open
-                </Link>
-              </div>
+                <ArrowRightIcon className="text-[var(--foreground-muted)] transition-transform group-hover:translate-x-0.5 group-hover:text-[var(--foreground)]" size={18} aria-hidden="true" />
+              </Link>
             </li>
           ))}
-        </ul>
+        </ol>
       )}
     </main>
   );

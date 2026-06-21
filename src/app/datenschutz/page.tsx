@@ -1,5 +1,6 @@
 // src/app/datenschutz/page.tsx
 import type { Metadata } from "next";
+import { LegalLayout } from "@/components/LegalLayout";
 
 export const metadata: Metadata = {
   title: "Datenschutzerklärung | DeepDivePath",
@@ -42,9 +43,7 @@ E-Mail: simtec1407@gmail.com</p>
 
 export default function DatenschutzPage() {
   return (
-    <main className="mx-auto max-w-3xl px-6 py-10">
-      <h1 className="text-3xl font-semibold">Datenschutzerklärung</h1>
-
+    <LegalLayout>
       <div
         className="prose prose-invert mt-6 max-w-none"
         // eRecht24-HTML ist statisch von dir eingefügt, nicht von Nutzern => ok.
@@ -54,13 +53,13 @@ export default function DatenschutzPage() {
       {/* Addendum: Cloudflare (Registrar/DNS) */}
       <section className="mt-10 border-t border-neutral-800 pt-8">
         <h2 className="text-xl font-semibold">Ergänzung: Cloudflare (Domain / DNS)</h2>
-        <p className="mt-3 text-neutral-200">
+        <p className="mt-3 text-[var(--foreground-secondary)]">
           Wir nutzen Cloudflare als Domain-Registrar und DNS-Dienstleister (Domain Name System), um unsere Domain
           zu verwalten und Anfragen an unsere Website technisch aufzulösen. Dabei können technisch bedingt
           personenbezogene Daten (insbesondere IP-Adresse, Zeitstempel, angefragte Domain/Record-Informationen)
           verarbeitet werden.
         </p>
-        <p className="mt-3 text-neutral-200">
+        <p className="mt-3 text-[var(--foreground-secondary)]">
           Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO (berechtigtes Interesse an einem sicheren, stabilen und
           effizienten Betrieb der Domain/Website) und soweit für die Domainverwaltung erforderlich Art. 6 Abs. 1 lit. b DSGVO
           (Vertragserfüllung).
@@ -70,12 +69,12 @@ export default function DatenschutzPage() {
       {/* Addendum: Vercel Analytics */}
       <section className="mt-10 border-t border-neutral-800 pt-8">
         <h2 className="text-xl font-semibold">Ergänzung: Vercel Web Analytics</h2>
-        <p className="mt-3 text-neutral-200">
+        <p className="mt-3 text-[var(--foreground-secondary)]">
           Sofern Sie eingewilligt haben, setzen wir Vercel Web Analytics ein, um die Nutzung unserer Website
           statistisch auszuwerten und unser Angebot zu verbessern. Dabei werden insbesondere technische Nutzungsdaten
           (z. B. Seitenaufrufe, Referrer, Gerät-/Browserinformationen, Zeitstempel) verarbeitet.
         </p>
-        <p className="mt-3 text-neutral-200">
+        <p className="mt-3 text-[var(--foreground-secondary)]">
           Rechtsgrundlage ist Ihre Einwilligung (Art. 6 Abs. 1 lit. a DSGVO) sowie § 25 Abs. 1 TDDDG, soweit der Zugriff
           auf Informationen im Endgerät betroffen ist. Die Einwilligung können Sie jederzeit mit Wirkung für die Zukunft
           widerrufen (Cookie-/Consent-Einstellungen).
@@ -85,17 +84,17 @@ export default function DatenschutzPage() {
       {/* Addendum: YouTube Thumbnails (i.ytimg.com) */}
       <section className="mt-10 border-t border-neutral-800 pt-8">
         <h2 className="text-xl font-semibold">Ergänzung: YouTube-Vorschaubilder (Thumbnails)</h2>
-        <p className="mt-3 text-neutral-200">
+        <p className="mt-3 text-[var(--foreground-secondary)]">
           Auf unserer Website werden Vorschaubilder zu verlinkten YouTube-Videos von YouTube/Google-Servern geladen
           (z. B. von i.ytimg.com). Beim Abruf der Vorschaubilder wird Ihre IP-Adresse sowie technische Kommunikationsdaten
           an den jeweiligen Anbieter übermittelt, da ohne diese Übermittlung die Darstellung nicht möglich ist.
         </p>
-        <p className="mt-3 text-neutral-200">
+        <p className="mt-3 text-[var(--foreground-secondary)]">
           Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO (berechtigtes Interesse an einer ansprechenden Darstellung und
           nutzerfreundlichen Verlinkung von Videoinhalten). Sofern Sie die verlinkten Videos anklicken, erfolgt der
           Aufruf des YouTube-Angebots in der Verantwortung von YouTube/Google.
         </p>
       </section>
-    </main>
+    </LegalLayout>
   );
 }

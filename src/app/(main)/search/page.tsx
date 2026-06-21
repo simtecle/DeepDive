@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 
 export default function SearchPage() {
   return (
-    <Suspense fallback={<div className="text-neutral-400">Loading…</div>}>
+    <Suspense fallback={<div className="dd-skeleton h-44 rounded-[14px]" aria-label="Loading search" />}>
       <SearchPageClient />
     </Suspense>
   );

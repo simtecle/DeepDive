@@ -1,8 +1,24 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: oklch(0.135 0.012 255);
+  --background-subtle: oklch(0.165 0.014 255);
+  --surface: oklch(0.195 0.016 255);
+  --surface-raised: oklch(0.235 0.018 255);
+  --border: oklch(0.31 0.018 255);
+  --border-strong: oklch(0.4 0.024 255);
+  --foreground: oklch(0.955 0.008 90);
+  --foreground-secondary: oklch(0.73 0.018 255);
+  --foreground-muted: oklch(0.62 0.018 255);
+  --accent: oklch(0.79 0.145 75);
+  --accent-hover: oklch(0.84 0.135 78);
+  --accent-ink: oklch(0.18 0.025 65);
+  --success: oklch(0.74 0.14 150);
+  --error: oklch(0.69 0.17 25);
+  --focus: oklch(0.84 0.135 78);
+  --z-sticky: 20;
+  --z-nav: 30;
+  --z-banner: 40;
 }
 
 @theme inline {
@@ -12,15 +28,97 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  background: var(--background);
 }
 
 body {
+  min-height: 100dvh;
+  margin: 0;
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button,
+a,
+input,
+select {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+
+::selection {
+  background: color-mix(in oklch, var(--accent) 34%, transparent);
+  color: var(--foreground);
+}
+
+.dd-skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--surface-raised);
+}
+
+.dd-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, oklch(0.8 0.015 255 / 0.09), transparent);
+  animation: dd-shimmer 1.5s ease-in-out infinite;
+}
+
+.legal-copy {
+  color: var(--foreground-secondary);
+  font-size: 0.95rem;
+  line-height: 1.75;
+}
+
+.legal-copy h1,
+.legal-copy h2,
+.legal-copy h3,
+.legal-copy h4 {
+  color: var(--foreground);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.legal-copy h1 { margin: 0 0 2rem; font-size: 2rem; }
+.legal-copy h2 { margin: 3rem 0 1rem; font-size: 1.35rem; }
+.legal-copy h3 { margin: 2rem 0 0.75rem; font-size: 1.05rem; }
+.legal-copy h4 { margin: 1.5rem 0 0.5rem; font-size: 0.95rem; }
+.legal-copy p { margin: 0.75rem 0; max-width: 72ch; }
+.legal-copy a { color: var(--foreground); text-decoration: underline; text-underline-offset: 3px; }
+.legal-copy strong { color: var(--foreground); font-weight: 600; }
+
+@keyframes dd-shimmer {
+  to { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

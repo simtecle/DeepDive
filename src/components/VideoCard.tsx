@@ -2,10 +2,9 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
+import { ArrowSquareOutIcon, PlayIcon } from '@phosphor-icons/react';
 import { youTubeIdFromUrl, youtubeThumbnailCandidates } from '@/lib/youtubeThumb';
 
-// Keep this type minimal and compatible with your existing Video shape.
-// It only requires the fields used for rendering.
 export type VideoCardVideo = {
   title: string;
   video_url: string;
@@ -20,88 +19,107 @@ export type VideoCardSize = 'snake' | 'grid';
 type Props = {
   video: VideoCardVideo;
   size?: VideoCardSize;
-  href?: string; // optional override
+  href?: string;
   priority?: boolean;
   className?: string;
+  step?: number;
+  featured?: boolean;
 };
 
 function formatDuration(minutes?: number | null): string | null {
   if (minutes == null || Number.isNaN(minutes)) return null;
-  const m = Math.max(0, Math.floor(minutes));
-  const h = Math.floor(m / 60);
-  const mm = m % 60;
-  if (h <= 0) return `${m} min`;
-  return `${h}h ${mm.toString().padStart(2, '0')}m`;
+  const total = Math.max(0, Math.floor(minutes));
+  const hours = Math.floor(total / 60);
+  const mins = total % 60;
+  return hours > 0 ? `${hours}h ${mins.toString().padStart(2, '0')}m` : `${total} min`;
 }
 
-export function VideoCard({ video, size = 'grid', href, priority = false, className }: Props) {
-  const youtubeId = useMemo(() => youTubeIdFromUrl(video.video_url), [video.video_url]);
+function languageLabel(language?: string | null) {
+  if (!language) return null;
+  if (language.toLowerCase() === 'en') return 'English';
+  if (language.toLowerCase() === 'de') return 'German';
+  return language;
+}
 
+export function VideoCard({
+  video,
+  size = 'grid',
+  href,
+  priority = false,
+  className,
+  step,
+  featured = false,
+}: Props) {
+  const youtubeId = useMemo(() => youTubeIdFromUrl(video.video_url), [video.video_url]);
   const candidates = useMemo(() => (youtubeId ? youtubeThumbnailCandidates(youtubeId) : []), [youtubeId]);
   const [thumbIndex, setThumbIndex] = useState(0);
 
-  // Reset fallback cycle when the video changes
-  useEffect(() => {
-    setThumbIndex(0);
-  }, [youtubeId]);
+  useEffect(() => setThumbIndex(0), [youtubeId]);
 
-  // Smaller, more premium-feeling cards: avoid giant hero thumbnails.
-  // Snake cards are a bit larger than grid, but still restrained.
-  const thumbHeightClass = size === 'snake' ? 'h-40 sm:h-44' : 'h-32 sm:h-36';
-
-  const duration = formatDuration(video.duration_min);
-  const metaPieces = [video.source_channel ?? null, video.language ?? null, video.level ?? null, duration].filter(
-    (x): x is string => Boolean(x && x.trim())
-  );
+  const metadata = [
+    video.source_channel ?? null,
+    languageLabel(video.language),
+    formatDuration(video.duration_min),
+  ].filter((value): value is string => Boolean(value?.trim()));
 
   const cardHref = href ?? video.video_url;
-
   const thumbUrl = candidates[thumbIndex] ?? null;
+  const isTimeline = size === 'snake';
 
   return (
     <article
-      className={
-        'rounded-2xl border border-neutral-800 bg-neutral-900/40 shadow-[0_0_0_1px_rgba(255,255,255,0.02)] overflow-hidden ' +
-        (className ?? '')
-      }
+      className={[
+        'group overflow-hidden rounded-[14px] border bg-[var(--surface)] transition-colors duration-200',
+        featured ? 'border-[var(--border-strong)]' : 'border-[var(--border)] hover:border-[var(--border-strong)]',
+        isTimeline ? 'sm:grid sm:grid-cols-[minmax(190px,260px)_1fr]' : '',
+        className ?? '',
+      ].join(' ')}
     >
-      <div className={'relative w-full ' + thumbHeightClass}>
+      <div className={['relative overflow-hidden bg-[var(--surface-raised)]', isTimeline ? 'aspect-video sm:aspect-auto sm:min-h-40' : 'aspect-video'].join(' ')}>
         {thumbUrl ? (
           <img
             src={thumbUrl}
-            alt={video.title}
+            alt=""
             loading={priority ? 'eager' : 'lazy'}
-            decoding='async'
-            referrerPolicy='no-referrer'
-            className='absolute inset-0 h-full w-full object-cover'
-            onError={() => {
-              // Try next candidate. If none left, keep the last (will remain broken) and the user will see the gradient overlay.
-              setThumbIndex((prev) => (prev + 1 < candidates.length ? prev + 1 : prev));
-            }}
+            decoding="async"
+            referrerPolicy="no-referrer"
+            className="absolute inset-0 size-full object-cover transition-transform duration-200 group-hover:scale-[1.015]"
+            onError={() => setThumbIndex((index) => (index + 1 < candidates.length ? index + 1 : index))}
           />
         ) : (
-          <div className='h-full w-full bg-neutral-800/60' />
+          <div className="absolute inset-0 grid place-items-center text-[var(--foreground-muted)]">
+            <PlayIcon size={30} weight="fill" aria-hidden="true" />
+          </div>
         )}
-
-        {/* subtle overlay for readability */}
-        <div className='pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 via-black/0 to-black/0' />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[oklch(0.08_0.01_255/0.42)] to-transparent" />
+        {featured && (
+          <span className="absolute left-3 top-3 rounded-full bg-[var(--accent)] px-2.5 py-1 text-[11px] font-semibold text-[var(--accent-ink)]">
+            Start here
+          </span>
+        )}
       </div>
 
-      <div className='p-4'>
-        <h3 className='text-sm sm:text-base font-medium text-neutral-100 line-clamp-2'>{video.title}</h3>
-
-        {metaPieces.length > 0 && (
-          <p className='mt-2 text-xs text-neutral-400 line-clamp-1'>{metaPieces.join(' • ')}</p>
+      <div className="flex min-w-0 flex-col p-4 sm:p-5">
+        {step !== undefined && (
+          <span className="mb-2 text-xs font-semibold text-[var(--accent)]">Lesson {step}</span>
         )}
-
-        <div className='mt-3'>
+        <h3 className="line-clamp-2 text-base font-semibold leading-6 tracking-[-0.015em] text-[var(--foreground)] sm:text-lg">
+          {video.title}
+        </h3>
+        {metadata.length > 0 && (
+          <p className="mt-2 line-clamp-1 text-xs text-[var(--foreground-secondary)]">
+            {metadata.join(' / ')}
+          </p>
+        )}
+        <div className="mt-4 sm:mt-auto sm:pt-4">
           <Link
             href={cardHref}
             target={href ? undefined : '_blank'}
             rel={href ? undefined : 'noreferrer'}
-            className='text-sm underline underline-offset-4 text-neutral-200 hover:text-white'
+            className="inline-flex min-h-11 items-center gap-2 rounded-[10px] text-sm font-semibold text-[var(--foreground)] transition-colors hover:text-[var(--accent)]"
           >
-            Watch
+            Watch on YouTube
+            <ArrowSquareOutIcon size={17} weight="bold" aria-hidden="true" />
           </Link>
         </div>
       </div>

@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { SnakeTrack } from '@/components/SnakeTrack';
+import { LearningPath } from '@/components/LearningPath';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useVideos } from '@/hooks/useVideos';
 import { SearchBar } from '@/components/SearchBar';
+import { CheckCircleIcon, ClockIcon, PlusCircleIcon, WarningCircleIcon, XIcon } from '@phosphor-icons/react';
 
 type ResolveTopicResponse =
   | { ok: true; topic_name: string; topic_key: string; match_type: string; score: number }
@@ -50,6 +51,8 @@ export default function SearchPageClient() {
   const [level, setLevel] = useState('');
   const [requestStatus, setRequestStatus] = useState('');
   const [requestBusy, setRequestBusy] = useState(false);
+  const [requestConfirmOpen, setRequestConfirmOpen] = useState(false);
+  const [requestTone, setRequestTone] = useState<'neutral' | 'success' | 'error'>('neutral');
   const [autoKey, setAutoKey] = useState<string>('');
   const [hasSearched, setHasSearched] = useState(false);
   const [lastSearched, setLastSearched] = useState<{ q: string; language: string; level: string } | null>(null);
@@ -79,6 +82,8 @@ export default function SearchPageClient() {
     if (!raw) return;
 
     setRequestStatus('');
+    setRequestConfirmOpen(false);
+    setRequestTone('neutral');
     setNoCanonicalMatch(false);
     setSuggestions([]);
 
@@ -194,51 +199,108 @@ export default function SearchPageClient() {
     void resolveAndSearch(next, language, level, { syncUrl: false });
   }
 
+  async function submitTopicRequest() {
+    const q = (lastSearched?.q ?? '').trim();
+    if (!q) return;
+
+    setRequestBusy(true);
+    setRequestTone('neutral');
+    setRequestStatus('Submitting your request…');
+
+    try {
+      const res = await fetch('/api/request-topic', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query_raw: q }),
+      });
+
+      if (res.status === 429) {
+        setRequestTone('error');
+        setRequestStatus('Rate limit reached. Try again later.');
+        return;
+      }
+
+      const data: unknown = await res.json();
+      const accepted =
+        typeof data === 'object' &&
+        data !== null &&
+        'accepted' in data &&
+        (data as { accepted: boolean }).accepted === true;
+
+      setRequestTone(accepted ? 'success' : 'error');
+      setRequestStatus(accepted ? 'Request submitted. Check back later.' : 'Request failed. Try again.');
+      if (accepted) setRequestConfirmOpen(false);
+    } catch {
+      setRequestTone('error');
+      setRequestStatus('Request failed. Try again.');
+    } finally {
+      setRequestBusy(false);
+    }
+  }
+
   return (
-    <main className="space-y-4">
-      <header>
-        <h1 className="text-3xl font-semibold">DeepDive</h1>
-        <p className="text-sm text-slate-400">Search learning videos by topic</p>
+    <main className="space-y-9">
+      <header className="max-w-2xl">
+        <h1 className="text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">Build a learning path</h1>
+        <p className="mt-2 text-sm leading-6 text-[var(--foreground-secondary)] sm:text-base">
+          Search the curated library and follow each level in recommended order.
+        </p>
       </header>
 
-      <SearchBar
-        search={search}
-        language={language}
-        level={level}
-        onSearchChange={(v) => {
-          setSearch(v);
-          setHasSearched(false);
-        }}
-        onLanguageChange={(v) => {
-          setLanguage(v);
-          setHasSearched(false);
-        }}
-        onLevelChange={(v) => {
-          setLevel(v);
-          setHasSearched(false);
-        }}
-        onSubmit={async () => {
-          const raw = search.trim();
-          if (!raw) return;
-
-          // Run search first; also sync URL to canonical topic.
-          await resolveAndSearch(raw, language, level, { syncUrl: true });
-        }}
-      />
+      <div className="sticky top-[68px] z-[var(--z-sticky)] rounded-[14px] border border-[var(--border)] bg-[var(--background-subtle)] p-4 sm:p-5 md:top-3">
+        <SearchBar
+          search={search}
+          language={language}
+          level={level}
+          onSearchChange={(v) => {
+            setSearch(v);
+            setHasSearched(false);
+          }}
+          onLanguageChange={(v) => {
+            setLanguage(v);
+            setHasSearched(false);
+          }}
+          onLevelChange={(v) => {
+            setLevel(v);
+            setHasSearched(false);
+          }}
+          onSubmit={async () => {
+            const raw = search.trim();
+            if (!raw) return;
+            await resolveAndSearch(raw, language, level, { syncUrl: true });
+          }}
+        />
+      </div>
 
       {loading ? (
-        <p className="text-neutral-400">Loading…</p>
+        <div className="space-y-4" aria-label="Loading learning path" aria-live="polite">
+          <div className="dd-skeleton h-7 w-48 rounded-[8px]" />
+          {[0, 1, 2].map((item) => (
+            <div key={item} className="dd-skeleton h-44 rounded-[14px]" />
+          ))}
+        </div>
       ) : !hasSearched ? (
-        <p className="text-neutral-500 text-sm italic">Type a topic and press Search.</p>
+        <div className="rounded-[14px] border border-dashed border-[var(--border)] px-6 py-12 text-center">
+          <ClockIcon className="mx-auto text-[var(--accent)]" size={28} weight="duotone" aria-hidden="true" />
+          <p className="mt-4 font-medium">Your next path starts with a topic.</p>
+          <p className="mt-1 text-sm text-[var(--foreground-secondary)]">Try a subject, skill, person, or idea above.</p>
+        </div>
       ) : noCanonicalMatch || videos.length === 0 ? (
-        <div className="space-y-4">
-          <p className="text-neutral-500 text-sm italic">No matching topic found. Try a more specific topic name.</p>
+        <div className="max-w-3xl rounded-[14px] border border-[var(--border)] bg-[var(--surface)] p-5 sm:p-7">
+          <WarningCircleIcon size={26} weight="duotone" className="text-[var(--accent)]" aria-hidden="true" />
+          <h2 className="mt-4 text-xl font-semibold tracking-[-0.02em]">We do not have this topic yet</h2>
+          <p className="mt-2 text-sm leading-6 text-[var(--foreground-secondary)]">
+            Choose a related topic below, refine your search, or request this topic for the library.
+          </p>
 
           {(suggestBusy || suggestions.length > 0) && (
-            <div className="space-y-2">
-              <div className="text-sm font-medium text-slate-200">Did you mean:</div>
+            <div className="mt-6 space-y-2">
+              <div className="text-sm font-medium">Related topics</div>
               {suggestBusy ? (
-                <p className="text-sm text-slate-400">Looking for similar topics…</p>
+                <div className="flex gap-2" aria-label="Looking for related topics">
+                  <span className="dd-skeleton h-9 w-24 rounded-full" />
+                  <span className="dd-skeleton h-9 w-32 rounded-full" />
+                </div>
               ) : (
                 <div className="flex flex-wrap gap-2">
                   {suggestions.map((s) => (
@@ -246,7 +308,7 @@ export default function SearchPageClient() {
                       key={s.topic_name}
                       type="button"
                       onClick={() => goToTopic(s.topic_name)}
-                      className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-xs text-slate-200 hover:bg-slate-900 hover:border-sky-500/30"
+                      className="min-h-9 rounded-full border border-[var(--border)] bg-[var(--background-subtle)] px-3 text-xs text-[var(--foreground-secondary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--foreground)]"
                       title={`${s.published_count} videos`}
                     >
                       {s.topic_name}
@@ -257,58 +319,77 @@ export default function SearchPageClient() {
             </div>
           )}
 
-          <div className="space-y-2">
+          <div className="mt-7 border-t border-[var(--border)] pt-6">
             <button
-              className="bg-neutral-200 text-neutral-900 rounded-lg px-3 py-2 disabled:opacity-60"
+              className="inline-flex min-h-11 items-center gap-2 rounded-[10px] bg-[var(--accent)] px-4 text-sm font-semibold text-[var(--accent-ink)] transition-colors hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-60"
               disabled={requestBusy}
-              onClick={async () => {
-                const q = (lastSearched?.q ?? '').trim();
-                if (!q) return;
-
-                const ok = window.confirm(`Request "${q}"?`);
-                if (!ok) return;
-
-                setRequestBusy(true);
-                setRequestStatus('Submitting request…');
-
-                try {
-                  const res = await fetch('/api/request-topic', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query_raw: q }),
-                  });
-
-                  if (res.status === 429) {
-                    setRequestStatus('Rate limit reached. Try again later.');
-                    return;
-                  }
-
-                  const data: unknown = await res.json();
-                  const accepted =
-                    typeof data === 'object' &&
-                    data !== null &&
-                    'accepted' in data &&
-                    (data as { accepted: boolean }).accepted === true;
-
-                  setRequestStatus(accepted ? 'Request submitted. Check back later.' : 'Request failed. Try again.');
-                } catch {
-                  setRequestStatus('Request failed. Try again.');
-                } finally {
-                  setRequestBusy(false);
-                }
-              }}
+              onClick={() => setRequestConfirmOpen(true)}
             >
+              <PlusCircleIcon size={18} weight="bold" aria-hidden="true" />
               Request this topic
             </button>
 
-            {requestStatus && <p className="text-sm text-neutral-400">{requestStatus}</p>}
+            {requestConfirmOpen && (
+              <div className="mt-4 rounded-[10px] border border-[var(--border)] bg-[var(--background-subtle)] p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold">Add “{lastSearched?.q}” to the request queue?</p>
+                    <p className="mt-1 text-xs leading-5 text-[var(--foreground-secondary)]">
+                      DeepDive will automatically source and classify suitable videos.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Cancel topic request"
+                    onClick={() => setRequestConfirmOpen(false)}
+                    className="grid size-11 shrink-0 place-items-center rounded-[10px] text-[var(--foreground-secondary)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
+                  >
+                    <XIcon size={18} aria-hidden="true" />
+                  </button>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void submitTopicRequest()}
+                    disabled={requestBusy}
+                    className="min-h-11 rounded-[10px] bg-[var(--accent)] px-4 text-sm font-semibold text-[var(--accent-ink)] hover:bg-[var(--accent-hover)] disabled:opacity-60"
+                  >
+                    {requestBusy ? 'Submitting…' : 'Confirm request'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRequestConfirmOpen(false)}
+                    className="min-h-11 rounded-[10px] border border-[var(--border)] px-4 text-sm font-semibold text-[var(--foreground-secondary)] hover:text-[var(--foreground)]"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {requestStatus && (
+              <p
+                className={[
+                  'mt-4 flex items-center gap-2 text-sm',
+                  requestTone === 'success'
+                    ? 'text-[var(--success)]'
+                    : requestTone === 'error'
+                      ? 'text-[var(--error)]'
+                      : 'text-[var(--foreground-secondary)]',
+                ].join(' ')}
+                aria-live="polite"
+              >
+                {requestTone === 'success' && <CheckCircleIcon size={18} weight="fill" aria-hidden="true" />}
+                {requestStatus}
+              </p>
+            )}
           </div>
         </div>
       ) : (
-        <div className="space-y-10">
-          <SnakeTrack title="Beginner Track" videos={tracks?.Beginner?.items ?? []} coreCount={4} morePreviewCount={6} />
-          <SnakeTrack title="Intermediate Track" videos={tracks?.Intermediate?.items ?? []} coreCount={4} morePreviewCount={6} />
-          <SnakeTrack title="Advanced Track" videos={tracks?.Advanced?.items ?? []} coreCount={4} morePreviewCount={6} />
+        <div className="space-y-16">
+          <LearningPath title="Beginner Track" videos={tracks?.Beginner?.items ?? []} coreCount={4} morePreviewCount={3} />
+          <LearningPath title="Intermediate Track" videos={tracks?.Intermediate?.items ?? []} coreCount={4} morePreviewCount={3} />
+          <LearningPath title="Advanced Track" videos={tracks?.Advanced?.items ?? []} coreCount={4} morePreviewCount={3} />
         </div>
       )}
     </main>

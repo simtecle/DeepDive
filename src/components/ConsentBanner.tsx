@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { ShieldCheckIcon } from '@phosphor-icons/react';
 import type { ConsentState } from '@/lib/consent';
 
 type Props = {
@@ -12,57 +13,54 @@ type Props = {
 export function ConsentBanner({ consent, onChange }: Props) {
   const [visible, setVisible] = useState(false);
 
-  useEffect(() => {
-    // Show only if the user has not made a decision yet.
-    setVisible(consent.decidedAt === null);
-  }, [consent.decidedAt]);
-
-  function accept() {
-    onChange({ analytics: true, decidedAt: new Date().toISOString() });
-    setVisible(false);
-  }
-
-  function reject() {
-    onChange({ analytics: false, decidedAt: new Date().toISOString() });
-    setVisible(false);
-  }
+  useEffect(() => setVisible(consent.decidedAt === null), [consent.decidedAt]);
 
   if (!visible) return null;
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-neutral-800 bg-neutral-950/95 backdrop-blur">
-      <div className="mx-auto max-w-5xl px-4 py-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="text-sm text-neutral-200">
-          <div className="font-medium">Cookies &amp; Analytics</div>
-          <div className="text-neutral-400">
-            We use analytics to understand usage and improve the product. You can accept or reject analytics tracking.
-          </div>
-          <div className="text-neutral-500">
-            See our <Link className="underline" href="/privacy">Privacy Policy</Link>.
-          </div>
-        </div>
-
-        <div className="flex gap-2">
-          <button
-            onClick={reject}
-            className="rounded-lg border border-neutral-700 px-3 py-2 text-sm text-neutral-200 hover:border-neutral-500"
-          >
-            Reject
-          </button>
-          <button
-            onClick={accept}
-            className="rounded-lg bg-neutral-200 px-3 py-2 text-sm text-neutral-900 hover:bg-white"
-          >
-            Accept
-          </button>
-          <Link
-            href="/settings"
-            className="rounded-lg border border-neutral-700 px-3 py-2 text-sm text-neutral-300 hover:border-neutral-500 hover:text-neutral-100"
-          >
-            Cookie settings
+    <aside
+      className="fixed inset-x-3 bottom-[84px] z-[var(--z-banner)] mx-auto max-w-3xl rounded-[14px] border border-[var(--border-strong)] bg-[var(--surface-raised)] p-4 sm:p-5 md:bottom-5"
+      aria-label="Analytics consent"
+    >
+      <div className="flex gap-3">
+        <ShieldCheckIcon className="mt-0.5 shrink-0 text-[var(--accent)]" size={22} weight="duotone" aria-hidden="true" />
+        <div className="min-w-0 flex-1">
+          <h2 className="text-sm font-semibold">Your analytics preference</h2>
+          <p className="mt-1 text-xs leading-5 text-[var(--foreground-secondary)] sm:text-sm">
+            Optional analytics help improve DeepDive. You can accept, reject, or change this later in settings.
+          </p>
+          <Link className="mt-1 inline-block text-xs text-[var(--foreground-secondary)] underline underline-offset-4 hover:text-[var(--foreground)]" href="/privacy">
+            Read the Privacy Policy
           </Link>
         </div>
       </div>
-    </div>
+
+      <div className="mt-4 flex flex-wrap gap-2 sm:justify-end">
+        <button
+          onClick={() => {
+            onChange({ analytics: false, decidedAt: new Date().toISOString() });
+            setVisible(false);
+          }}
+          className="min-h-11 flex-1 rounded-[10px] border border-[var(--border)] px-4 text-sm font-semibold text-[var(--foreground-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--foreground)] sm:flex-none"
+        >
+          Reject
+        </button>
+        <Link
+          href="/settings"
+          className="inline-flex min-h-11 flex-1 items-center justify-center rounded-[10px] border border-[var(--border)] px-4 text-sm font-semibold text-[var(--foreground-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--foreground)] sm:flex-none"
+        >
+          Settings
+        </Link>
+        <button
+          onClick={() => {
+            onChange({ analytics: true, decidedAt: new Date().toISOString() });
+            setVisible(false);
+          }}
+          className="min-h-11 flex-1 rounded-[10px] bg-[var(--accent)] px-4 text-sm font-semibold text-[var(--accent-ink)] hover:bg-[var(--accent-hover)] sm:flex-none"
+        >
+          Accept
+        </button>
+      </div>
+    </aside>
   );
 }

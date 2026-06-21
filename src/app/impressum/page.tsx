@@ -1,15 +1,17 @@
+import { LegalLayout } from '@/components/LegalLayout';
+
 export default function ImpressumPage() {
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-100 px-6 py-10">
-      <div className="max-w-3xl mx-auto space-y-10">
+    <LegalLayout>
+      <div className="space-y-10">
         <header className="space-y-2">
           <h1 className="text-3xl font-semibold">Impressum</h1>
-          <p className="text-neutral-400 text-sm">
+          <p className="text-sm text-[var(--foreground-muted)]">
             Angaben gemäß § 5 DDG (Deutschland)
           </p>
         </header>
 
-        <section className="space-y-2 text-neutral-200">
+        <section className="space-y-2 text-[var(--foreground-secondary)]">
           <p><strong>Anbieter:</strong> Simon Tecle</p>
           <p>
             <strong>Anschrift:</strong><br />
@@ -22,8 +24,8 @@ export default function ImpressumPage() {
           <p><strong>E-Mail:</strong> simtec1407@gmail.com</p>
         </section>
 
-        <section className="space-y-2 text-neutral-300 text-sm">
-          <h2 className="text-xl font-semibold text-neutral-100">Haftungsausschluss</h2>
+        <section className="space-y-2 text-sm text-[var(--foreground-secondary)]">
+          <h2 className="text-xl font-semibold text-[var(--foreground)]">Haftungsausschluss</h2>
           <p>
             Die Inhalte dieser Website wurden mit größtmöglicher Sorgfalt erstellt.
             Für die Richtigkeit, Vollständigkeit und Aktualität der Inhalte übernehmen wir
@@ -40,12 +42,12 @@ export default function ImpressumPage() {
 
         <header className="space-y-2">
           <h2 className="text-2xl font-semibold">Imprint</h2>
-          <p className="text-neutral-400 text-sm">
+          <p className="text-sm text-[var(--foreground-muted)]">
             Information pursuant to § 5 DDG (Germany)
           </p>
         </header>
 
-        <section className="space-y-2 text-neutral-200">
+        <section className="space-y-2 text-[var(--foreground-secondary)]">
           <p><strong>Provider:</strong> Simon Tecle</p>
           <p>
             <strong>Address:</strong><br />
@@ -58,8 +60,8 @@ export default function ImpressumPage() {
           <p><strong>Email:</strong> simtec1407@gmail.com</p>
         </section>
 
-        <section className="space-y-2 text-neutral-300 text-sm">
-          <h2 className="text-xl font-semibold text-neutral-100">Disclaimer</h2>
+        <section className="space-y-2 text-sm text-[var(--foreground-secondary)]">
+          <h2 className="text-xl font-semibold text-[var(--foreground)]">Disclaimer</h2>
           <p>
             The contents of this website have been created with great care. However, we cannot
             guarantee the contents&apos; accuracy, completeness, or timeliness.
@@ -72,6 +74,6 @@ export default function ImpressumPage() {
           </p>
         </section>
       </div>
-    </main>
+    </LegalLayout>
   );
 }
