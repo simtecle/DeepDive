@@ -17,16 +17,18 @@ function isAuthorized(req: NextRequest) {
   return { ok: true as const };
 }
 
-async function tryAcquireCronLock(lockKey: string, ttlSeconds: number) {
+async function tryAcquireCronLock(req: NextRequest, lockKey: string, ttlSeconds: number) {
   // Fail-open: if the lock RPC/table is misconfigured, we prefer running the job rather than breaking cron.
   // This is safe because the job itself already limits work per run.
   try {
-    const { data, error } = await supabaseServer.rpc('try_acquire_cron_lock', {
-      p_key: lockKey,
+    const { data, error } = await supabaseServer.rpc('acquire_cron_lock', {
+      p_job_name: lockKey,
       p_ttl_seconds: ttlSeconds,
+      p_locked_by: req.headers.get('x-vercel-id') ?? req.headers.get('user-agent') ?? null,
     });
+
     if (error) return { ok: true, acquired: true, note: `lock_rpc_error:${error.message}` };
-    return { ok: true, acquired: Boolean(data) };
+    return { ok: true, acquired: Boolean(data), note: null };
   } catch (e: any) {
     return { ok: true, acquired: true, note: `lock_rpc_exception:${String(e?.message ?? e)}` };
   }
@@ -38,20 +40,20 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: authResult.error }, { status: authResult.status });
   }
 
+  const adminToken = process.env.ADMIN_TOKEN ?? '';
+  if (!adminToken) {
+    return NextResponse.json({ ok: false, error: 'missing_admin_token' }, { status: 500 });
+  }
+
   // DB-backed cooldown lock (prevents overlapping/too-frequent runs).
   // Default: 1 hour.
   const lockKey = 'cron:classify-queued';
   const ttlSeconds = Number(process.env.CRON_LOCK_TTL_SECONDS ?? '3600');
   const safeTtl = Number.isFinite(ttlSeconds) ? Math.max(60, Math.floor(ttlSeconds)) : 3600;
 
-  const lock = await tryAcquireCronLock(lockKey, safeTtl);
+  const lock = await tryAcquireCronLock(req, lockKey, safeTtl);
   if (!lock.acquired) {
-    return NextResponse.json({ ok: true, skipped: true, reason: 'lock_active', lockKey, ttlSeconds: safeTtl });
-  }
-
-  const adminToken = process.env.ADMIN_TOKEN ?? '';
-  if (!adminToken) {
-    return NextResponse.json({ ok: false, error: 'missing_admin_token' }, { status: 500 });
+    return NextResponse.json({ ok: true, skipped: true, reason: 'lock_active', lockKey, ttlSeconds: safeTtl, lockNote: lock.note ?? null });
   }
 
   const origin = req.nextUrl.origin;
@@ -101,17 +103,19 @@ export async function GET(req: NextRequest) {
       });
     }
   } catch (e: any) {
+    const isAbort = e?.name === 'AbortError' || String(e?.message ?? '').toLowerCase().includes('aborted');
     return NextResponse.json(
       {
-        ok: false,
-        error: 'timeout_or_fetch_failed',
-        detail: String(e?.message ?? e),
+        ok: true,
+        skipped: true,
+        reason: isAbort ? 'timeout' : 'fetch_failed',
+        error: isAbort ? null : String(e?.message ?? e),
         limit: safeLimit,
         lockKey,
         ttlSeconds: safeTtl,
         lockNote: lock.note ?? null,
       },
-      { status: 504 },
+      { status: 200 },
     );
   } finally {
     clearTimeout(t);

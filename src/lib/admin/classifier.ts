@@ -87,7 +87,28 @@ function isGamingIntent(intent: string | null): boolean {
 function isLikelyNonLearning(title: string, description: string | null): boolean {
   const t = `${title} ${(description ?? '')}`.toLowerCase();
 
-  // Always non-learning / low-signal formats.
+  // Strong learning signals override weak format noise such as "clip" inside a longer educational title.
+  const learningSignals = [
+    'tutorial',
+    'course',
+    'full course',
+    'lesson',
+    'lecture',
+    'explained',
+    'explanation',
+    'how to',
+    'learn',
+    'for beginners',
+    'beginner',
+    'intermediate',
+    'advanced',
+    'introduction to',
+    'fundamentals',
+    'crash course',
+  ];
+  const looksLearning = learningSignals.some((k) => t.includes(k));
+
+  // Always low-signal formats unless the metadata clearly describes learning content.
   const alwaysBad = [
     'trailer',
     'teaser',
@@ -99,14 +120,13 @@ function isLikelyNonLearning(title: string, description: string | null): boolean
     'meme',
   ];
 
-  if (alwaysBad.some((k) => t.includes(k))) return true;
+  if (!looksLearning && alwaysBad.some((k) => t.includes(k))) return true;
 
   // Gaming-specific formats. These are only treated as non-learning when the text
-  // also looks like it is about games.
+  // also looks like it is about games and does not clearly signal educational intent.
   const gamingFormat = ['gameplay', "let's play", 'walkthrough', 'speedrun'];
   const gamingHints = [
     'gaming',
-    //'game ',  <-- removed as per instructions
     'minecraft',
     'roblox',
     'fortnite',
@@ -131,7 +151,7 @@ function isLikelyNonLearning(title: string, description: string | null): boolean
   const looksGaming = gamingHints.some((k) => t.includes(k));
   const looksGamingFormat = gamingFormat.some((k) => t.includes(k));
 
-  return looksGaming && looksGamingFormat;
+  return looksGaming && looksGamingFormat && !looksLearning;
 }
 
 async function canonicalizeTopicName(
@@ -329,6 +349,8 @@ export async function classifyQueued(args: { limit: number; threshold: number })
     .from('videos')
     .select('id,title,description,source_channel,language,duration_min,view_count,like_count,comment_count,notes,import_intent')
     .eq('status', 'queued')
+    // Prioritize newly imported rows. Legacy queued rows with null created_at should not block fresh imports.
+    .order('created_at', { ascending: false, nullsFirst: false })
     .limit(limit);
 
   if (error) throw new Error(`db_read_error:${error.message}`);
@@ -386,8 +408,8 @@ export async function classifyQueued(args: { limit: number; threshold: number })
         !tooShort &&
         // If it looks like non-learning content and the intent is NOT gaming-related, require very high confidence.
         !(nonLearning && !gamingIntent && r.confidence < Math.min(0.99, threshold + 0.20)) &&
-        // Allow both known and new topics; only require the higher bar for brand-new topics.
-        (topicKnown || allowNewTopic || true);
+        // Known canonical topics use the base threshold; brand-new topics need the higher override.
+        (topicKnown || allowNewTopic);
 
       // If we canonicalized, carry it forward.
       r.topic_name = topic_name;
@@ -396,7 +418,7 @@ export async function classifyQueued(args: { limit: number; threshold: number })
       const diagParts: string[] = [];
       if (tooShort) diagParts.push(`too_short(<${MIN_DURATION_MINUTES}m)`);
       if (nonLearning) diagParts.push('non_learning_hint');
-      if (!topicKnown) diagParts.push(allowNewTopic ? 'new_topic_allowed' : 'topic_unlisted');
+      if (!topicKnown) diagParts.push(allowNewTopic ? 'new_topic_allowed' : 'topic_unlisted_requires_high_confidence');
       if (nonLearning && !gamingIntent) diagParts.push('non_learning_gate');
       if (gamingIntent) diagParts.push('gaming_intent');
 
