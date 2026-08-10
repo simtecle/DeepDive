@@ -7,8 +7,8 @@ DeepDive turns any topic into a curated YouTube learning path (Beginner → Inte
 - Demo video (unlisted): https://youtu.be/kKaIN7ok1Ec
 
 ## Screenshots
-![Home](docs/images/home.jpg)
-![Search](docs/images/search.jpg)
+![Home](docs/images/Home.jpg)
+![Search](docs/images/Search.jpg)
 
 
 ## Why this exists
